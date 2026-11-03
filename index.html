@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AirSign</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=DM+Sans:wght@500;700&display=swap">
+<style>
+  :root { --paper:#f6efe0; --ink:#1b1b1b; --pink:#ff7eb6; --yellow:#ffd23f; --blue:#6c9bff; --green:#3ddc97; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'DM Sans',system-ui,sans-serif; color:var(--ink); background:var(--paper);
+         background-image:radial-gradient(#d9ceb3 1.2px, transparent 1.2px); background-size:22px 22px; }
+  main { max-width:1100px; margin:0 auto; padding:24px 18px 48px; }
+  header { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+  h1 { font-family:'Bagel Fat One',system-ui,sans-serif; font-weight:400; font-size:clamp(2.6rem,8vw,4.4rem); margin:0; line-height:1;
+       text-shadow:4px 4px 0 var(--pink); }
+  .tag { background:var(--yellow); border:3px solid var(--ink); border-radius:999px; padding:6px 16px; font-weight:700; transform:rotate(-2deg); }
+  .card { background:#fff; border:3px solid var(--ink); border-radius:20px; box-shadow:7px 7px 0 var(--ink); }
+  .grid { display:grid; grid-template-columns:1.35fr 1fr; gap:26px; align-items:start; }
+  @media (max-width:800px) { .grid { grid-template-columns:1fr; } }
+
+  .stage { position:relative; overflow:hidden; aspect-ratio:4/3; background:#222; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .badge { position:absolute; left:12px; bottom:12px; z-index:2; background:var(--yellow); border:3px solid var(--ink); border-radius:12px;
+           padding:6px 14px; font-weight:700; }
+
+  .side { display:flex; flex-direction:column; gap:22px; }
+  .detect { padding:20px; display:flex; align-items:center; gap:20px; background:var(--blue); }
+  .ring { --p:0; flex:none; width:150px; height:150px; border-radius:50%; border:3px solid var(--ink);
+          background:conic-gradient(var(--green) calc(var(--p) * 1%), #fff 0); display:grid; place-items:center; }
+  .ring span { width:82%; aspect-ratio:1; border-radius:50%; background:#fff; border:3px solid var(--ink); display:grid; place-items:center;
+               font-family:'Bagel Fat One',system-ui,sans-serif; font-size:3.4rem; text-align:center; line-height:1; padding:4px; overflow:hidden; }
+  .ring span.word { font-size:1.2rem; }
+  .detect p { margin:0; font-weight:700; font-size:1.15rem; color:#fff; text-shadow:2px 2px 0 var(--ink); }
+
+  .words { padding:18px; min-height:150px; }
+  .words h2, details h2 { font-size:.85rem; letter-spacing:.12em; text-transform:uppercase; margin:0 0 12px; }
+  #tiles { display:flex; flex-wrap:wrap; gap:8px; min-height:64px; }
+  .tile { min-width:46px; height:58px; padding:0 10px; display:grid; place-items:center; background:var(--yellow); border:3px solid var(--ink);
+          border-radius:10px; box-shadow:3px 3px 0 var(--ink); font-weight:700; font-size:1.7rem; animation:pop .28s cubic-bezier(.3,1.6,.5,1); }
+  .tile.w { background:var(--pink); font-size:1.15rem; }
+  .gap { width:22px; }
+  .empty { color:#8a8270; font-weight:500; }
+  @keyframes pop { from { transform:scale(.3) rotate(-8deg); } to { transform:scale(1) rotate(0); } }
+
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  button, input { font:inherit; font-weight:700; padding:10px 16px; border:3px solid var(--ink); border-radius:12px; background:#fff; color:var(--ink);
+                  cursor:pointer; box-shadow:3px 3px 0 var(--ink); transition:transform .08s, box-shadow .08s; }
+  button:active { transform:translate(3px,3px); box-shadow:0 0 0 var(--ink); }
+  button.go { background:var(--green); }
+  button.rec { background:var(--pink); }
+  input { cursor:text; box-shadow:none; }
+  button:focus-visible, input:focus-visible { outline:4px solid var(--blue); outline-offset:2px; }
+
+  details { margin-top:26px; padding:18px; }
+  summary { font-family:'Bagel Fat One',system-ui,sans-serif; font-size:1.5rem; cursor:pointer; }
+  .hint { margin:10px 0 14px; font-weight:500; }
+  #chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { min-width:46px; padding:6px 10px; font-size:1.05rem; position:relative; }
+  .chip.sel { background:var(--yellow); transform:translateY(-3px); }
+  .chip.ok::after { content:''; position:absolute; top:-6px; right:-6px; width:14px; height:14px; border-radius:50%; background:var(--green); border:3px solid var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AirSign</h1>
+    <span class="tag">hands in, words out</span>
+  </header>
+
+  <div class="grid">
+    <div class="card stage">
+      <video id="cam" playsinline muted></video>
+      <canvas id="out"></canvas>
+      <div class="badge" id="live">Starting camera…</div>
+    </div>
+
+    <div class="side">
+      <div class="card detect">
+        <div class="ring" id="ring"><span id="big">?</span></div>
+        <p>Hold a sign steady until the ring fills.</p>
+      </div>
+
+      <div class="card words">
+        <h2>Your message</h2>
+        <div id="tiles" aria-live="polite"></div>
+        <div class="row">
+          <button id="space" class="go">Space + say word</button>
+          <button id="speak">Speak all</button>
+          <button id="undo">Delete</button>
+          <button id="clear">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <details id="train" class="card">
+    <summary>Teach AirSign a sign</summary>
+    <p class="hint">Tap a sign below, press Record, then hold that handshape for 3 seconds. Do each sign twice at slightly different angles. Green dot means it's learned.</p>
+    <div id="chips"></div>
+    <div class="row">
+      <input id="custom" placeholder="Add your own word" aria-label="Custom word">
+      <button id="add">Add</button>
+      <button id="rec" class="rec">Record 60 samples</button>
+    </div>
+    <div class="row">
+      <button id="export">Export model.json</button>
+      <button id="import">Import</button>
+      <button id="reset">Reset all</button>
+      <input type="file" id="file" accept=".json" hidden>
+    </div>
+  </details>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script>
+const $ = id => document.getElementById(id);
+const video = $('cam'), canvas = $('out'), ctx = canvas.getContext('2d');
+
+// ---- settings you can tweak ----
+const HOLD_FRAMES = 12;      // frames a sign must be held
+const K = 5;                 // nearest neighbours
+const MAX_DIST = 1.0;        // bigger = more forgiving, smaller = stricter
+const SAMPLES_PER_RECORDING = 60;
+const LABELS = 'ABCDEFGHIKLMNOPQRSTUVWXY'.split('')
+  .concat(['Hello', 'Yes', 'No', 'Thank you', 'Please', 'Help', 'Water', 'I love you']);
+
+let samples = [], tokens = [];
+let current = null, count = 0, locked = null;
+let selected = 'A', recLabel = null, recCount = 0;
+
+// ---- model storage ----
+function save() { try { localStorage.setItem('airsign-model', JSON.stringify(samples)); } catch (e) {} }
+async function load() {
+  try { const s = JSON.parse(localStorage.getItem('airsign-model') || '[]'); if (s.length) { samples = s; return; } } catch (e) {}
+  try { const r = await fetch('model.json'); if (r.ok) samples = await r.json(); } catch (e) {}
+}
+
+// ---- features: position and size independent ----
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function vec(lm) {
+  const w = lm[0], s = dist(lm[0], lm[9]) || 1;
+  return lm.flatMap(p => [(p.x - w.x) / s, (p.y - w.y) / s]);
+}
+function predict(v) {
+  if (!samples.length) return null;
+  const d = samples.map(s => ({ l: s.label, d: Math.hypot(...s.v.map((x, i) => x - v[i])) }))
+                   .sort((a, b) => a.d - b.d).slice(0, K);
+  const votes = {};
+  d.forEach(n => votes[n.l] = (votes[n.l] || 0) + 1);
+  const best = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
+  const avg = d.filter(n => n.l === best).reduce((t, n) => t + n.d, 0) / votes[best];
+  return votes[best] >= Math.ceil(K / 2) && avg < MAX_DIST ? best : null;
+}
+
+// ---- output ----
+function say(t) {
+  if (!('speechSynthesis' in window) || !t) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(t); u.rate = 0.95; speechSynthesis.speak(u);
+}
+function toText() {
+  let out = '';
+  tokens.forEach(t => { out += t === ' ' ? ' ' : t.length === 1 ? t : ' ' + t + ' '; });
+  return out.replace(/\s+/g, ' ').trim();
+}
+function lastLetters() {
+  let w = '';
+  for (let i = tokens.length - 1; i >= 0 && tokens[i].length === 1 && tokens[i] !== ' '; i--) w = tokens[i] + w;
+  return w;
+}
+function render() {
+  $('tiles').innerHTML = tokens.length ? tokens.map(t =>
+    t === ' ' ? '<div class="gap"></div>' : `<div class="tile${t.length > 1 ? ' w' : ''}">${t}</div>`).join('')
+    : '<span class="empty">Sign something…</span>';
+}
+function accept(g) {
+  tokens.push(g); render();
+  if (g.length > 1) say(g);
+}
+function setBig(text, pct) {
+  const b = $('big'); b.textContent = text || '?'; b.className = text && text.length > 1 ? 'word' : '';
+  $('ring').style.setProperty('--p', pct || 0);
+}
+
+// ---- training UI ----
+function drawChips() {
+  const c = {}; samples.forEach(s => c[s.label] = (c[s.label] || 0) + 1);
+  $('chips').innerHTML = '';
+  LABELS.forEach(l => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (l === selected ? ' sel' : '') + (c[l] ? ' ok' : '');
+    b.textContent = l; b.onclick = () => { selected = l; drawChips(); };
+    $('chips').appendChild(b);
+  });
+}
+$('add').onclick = () => {
+  const w = $('custom').value.trim();
+  if (w && !LABELS.includes(w)) LABELS.push(w);
+  if (w) selected = w;
+  $('custom').value = ''; drawChips();
+};
+$('rec').onclick = () => {
+  const l = selected; let n = 3;
+  const t = setInterval(() => {
+    $('live').textContent = 'Get ready: ' + n + '  (' + l + ')';
+    if (n-- === 0) { clearInterval(t); recLabel = l; recCount = 0; }
+  }, 1000);
+};
+$('export').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(samples)], { type: 'application/json' }));
+  a.download = 'model.json'; a.click();
+};
+$('import').onclick = () => $('file').click();
+$('file').onchange = async e => {
+  try { samples = JSON.parse(await e.target.files[0].text()); save(); drawChips(); } catch (err) { alert('Could not read that file.'); }
+};
+$('reset').onclick = () => { if (confirm('Delete all recorded signs?')) { samples = []; save(); drawChips(); } };
+
+$('space').onclick = () => { const w = lastLetters(); if (tokens.length && tokens[tokens.length - 1] !== ' ') tokens.push(' '); render(); say(w); };
+$('speak').onclick = () => say(toText() || 'Nothing to say yet');
+$('undo').onclick = () => { tokens.pop(); render(); };
+$('clear').onclick = () => { tokens = []; render(); };
+
+// ---- main loop ----
+function onResults(res) {
+  canvas.width = res.image.width; canvas.height = res.image.height;
+  ctx.drawImage(res.image, 0, 0, canvas.width, canvas.height);
+  const hand = res.multiHandLandmarks && res.multiHandLandmarks[0];
+  if (!hand) { if (!recLabel) $('live').textContent = 'Show your hand'; current = null; locked = null; count = 0; setBig('?', 0); return; }
+  drawConnectors(ctx, hand, HAND_CONNECTIONS, { color: '#ffd23f', lineWidth: 5 });
+  drawLandmarks(ctx, hand, { color: '#ff7eb6', lineWidth: 2, radius: 5 });
+  const v = vec(hand);
+
+  if (recLabel) {
+    samples.push({ label: recLabel, v: v.map(x => +x.toFixed(4)) });
+    recCount++; $('live').textContent = 'Recording ' + recLabel + ' ' + recCount + '/' + SAMPLES_PER_RECORDING;
+    if (recCount >= SAMPLES_PER_RECORDING) { recLabel = null; save(); drawChips(); $('live').textContent = 'Saved!'; }
+    return;
+  }
+
+  const g = predict(v);
+  $('live').textContent = g ? 'Seeing: ' + g : (samples.length ? 'Unknown sign' : 'Teach me a sign first');
+  if (g !== locked) locked = null;
+  if (g && g === current) count++; else { current = g; count = 0; }
+  const pct = g && g !== locked ? Math.min(100, count / HOLD_FRAMES * 100) : (g ? 100 : 0);
+  setBig(g, pct);
+  if (g && g !== locked && count >= HOLD_FRAMES) { accept(g); locked = g; count = 0; }
+}
+
+const hands = new Hands({ locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/' + f });
+hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+hands.onResults(onResults);
+
+render();
+load().then(() => { drawChips(); if (!samples.length) $('train').open = true; });
+new Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width: 640, height: 480 })
+  .start().catch(() => { $('live').textContent = 'Camera blocked. Allow access and reload.'; });
+</script>
+</body>
+</html>
